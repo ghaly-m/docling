@@ -395,13 +395,23 @@ def test_latex_newline_macro():
     assert doc is not None
 
 
-def test_latex_tilde_macro():
-    """Test ~ (non-breaking space) macro handling"""
-    latex_content = b"""
-    \\documentclass{article}
-    \\begin{document}
-    Dr.~Smith arrived.
-    \\end{document}
+def test_latex_specials():
+    """TeX specials (~, --, ---, ``'', !`, ?`) keep their text in every item."""
+    latex_content = rb"""
+    \documentclass{article}
+    \begin{document}
+    \section{Results for 2019--2021}
+    Dr.~Smith read pages 10--20 of an em---dash ``quoted'' book. !`Hola! ?`Qu\'e?
+    \begin{itemize}
+    \item Range 5--9
+    \end{itemize}
+    \begin{table}
+    \caption{Years 2019--2021}
+    \begin{tabular}{ll}
+    a--b & ``x''
+    \end{tabular}
+    \end{table}
+    \end{document}
     """
     in_doc = InputDocument(
         path_or_stream=BytesIO(latex_content),
@@ -412,8 +422,33 @@ def test_latex_tilde_macro():
     backend = LatexDocumentBackend(in_doc=in_doc, path_or_stream=BytesIO(latex_content))
     doc = backend.convert()
 
-    md = doc.export_to_markdown()
-    assert "Smith" in md
+    texts = [t.text for t in doc.texts if t.content_layer == ContentLayer.BODY]
+    assert texts == [
+        "Results for 2019\u20132021",
+        "Dr. Smith read pages 10\u201320 of an em\u2014dash \u201cquoted\u201d book. \u00a1Hola! \u00bfQu\u00e9?",
+        "Range 5\u20139",
+        "Years 2019\u20132021",
+    ]
+    cells = [cell.text for cell in doc.tables[0].data.table_cells]
+    assert cells == ["a\u2013b", "\u201cx\u201d"]
+
+    # A stray & outside a table is dropped, not turned into extra spaces.
+    stray = rb"""
+    \documentclass{article}
+    \begin{document}
+    \begin{myenv} left & right \end{myenv}
+    \end{document}
+    """
+    in_doc = InputDocument(
+        path_or_stream=BytesIO(stray),
+        format=InputFormat.LATEX,
+        backend=LatexDocumentBackend,
+        filename="test.tex",
+    )
+    doc = LatexDocumentBackend(in_doc=in_doc, path_or_stream=BytesIO(stray)).convert()
+    texts = [t.text for t in doc.texts if t.content_layer == ContentLayer.BODY]
+    assert any("left" in t and "right" in t for t in texts)
+    assert not any("   " in t for t in texts)
 
 
 def test_latex_custom_macro_with_backslash():

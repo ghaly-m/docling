@@ -264,6 +264,21 @@ class TextHelperMixin:
             return name
         return text
 
+    @staticmethod
+    def _specials_to_text(node: LatexSpecialsNode) -> str:
+        """Return the text of a TeX special such as ``--``, ``---`` or ``~``.
+
+        ``~`` becomes a plain space, as in the metadata handler. latex2text
+        renders the others: ``--`` gives an en dash, quote ligatures give
+        curly quotes.
+        """
+        if node.specials_chars == "~":
+            return " "
+        # A stray & outside a parsed table is a column separator, not text.
+        if node.specials_chars == "&":
+            return ""
+        return LatexNodes2Text().nodelist_to_text([node])
+
     def _accent_custom_macro_arg(self, name: str, arg) -> str:
         """Apply accent ``name`` to an argument that uses document macros.
 
@@ -538,6 +553,8 @@ class TextHelperMixin:
                 )
                 if text:
                     text_parts.append(text)
+            elif isinstance(node, LatexSpecialsNode):
+                text_parts.append(self._specials_to_text(node))
             elif isinstance(node, LatexMathNode):
                 text_parts.append(self._expand_macros(node.latex_verbatim()))
             elif isinstance(node, LatexEnvironmentNode):
